@@ -1,0 +1,3 @@
+/home/samuelsm/skytrade/emitting/transmitter-linux/build/CMakeFiles/transmit.dir
+/home/samuelsm/skytrade/emitting/transmitter-linux/build/CMakeFiles/edit_cache.dir
+/home/samuelsm/skytrade/emitting/transmitter-linux/build/CMakeFiles/rebuild_cache.dir
