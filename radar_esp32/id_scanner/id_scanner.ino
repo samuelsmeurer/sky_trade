@@ -1,24 +1,11 @@
 /* -*- tab-width: 2; mode: c; -*-
  * 
  * Scanner for WiFi direct remote id. 
- * Handles both opendroneid and French formats.
  * 
  * Copyright (c) 2020-2021, Steve Jack.
  *
  * MIT licence.
- * 
- * Nov. '21     Added option to dump ODID frame to serial output.
- * Oct. '21     Updated for opendroneid release 1.0.
- * June '21     Added an option to log to an SD card.
- * May '21      Fixed a bug that presented when handing packed ODID data from multiple sources. 
- * April '21    Added support for EN 4709-002 WiFi beacons.
- * March '21    Added BLE scan. Doesn't work very well.
- * January '21  Added support for ANSI/CTA 2063 French IDs.
- *
- * Notes
- * 
- * May need a semaphore.
- * 
+
  */
 
 #if not defined(ARDUINO_ARCH_ESP32)
@@ -28,65 +15,18 @@
 #pragma GCC diagnostic warning "-Wunused-variable"
 #pragma GCC diagnostic ignored "-Wunused-but-set-variable"
 
-//
-
 #include <Arduino.h>
-
 #include <esp_wifi.h>
 #include <esp_event_loop.h>
 #include <nvs_flash.h>
-
 #include "opendroneid.h"
 
-//
-
-#define DIAGNOSTICS        1
-#define DUMP_ODID_FRAME    0
 
 #define WIFI_SCAN          1
-#define BLE_SCAN           0 // Experimental, does work very well.
-
-#define SD_LOGGER          0
-#define SD_CS              5
-#define SD_LOGGER_LED      2
-
-#define LCD_DISPLAY        0 // 11 for a SH1106 128X64 OLED.
-#define DISPLAY_PAGE_MS 4000
-
-#define TFT_DISPLAY        0
-#define TFT_WIDTH        128
-#define TFT_HEIGHT       160
-#define TRACK_SCALE      1.0 // m/pixel
-#define TRACK_TIME       120 // secs, 600
-
 #define ID_SIZE     (ODID_ID_SIZE + 1)
 #define MAX_UAVS           8
 #define OP_DISPLAY_LIMIT  16
 
-//
-
-#if SD_LOGGER
-
-#include <SD.h>
-// #include <SdFat.h>
-
-// #define SD_CONFIG       SdSpiConfig(SD_CS,DEDICATED_SPI,SD_SCK_MHZ(16))
-
-#endif
-
-//
-
-#if BLE_SCAN
-
-#include <BLEDevice.h>
-#include <BLEUtils.h>
-#include <BLEAddress.h>
-#include <BLEScan.h>
-#include <BLEAdvertisedDevice.h>
-
-#endif
-
-//
 
 struct id_data {int       flag;
                 uint8_t   mac[6];
@@ -97,21 +37,13 @@ struct id_data {int       flag;
                 int       altitude_msl, height_agl, speed, heading, rssi;
 };
 
-#if SD_LOGGER
-struct id_log  {int8_t    flushed;
-                uint32_t  last_write;
-                File      sd_log;
-};
-#endif
 
 //
 
 static void               print_json(int,int,struct id_data *);
-static void               write_log(uint32_t,struct id_data *,struct id_log *);
 static esp_err_t          event_handler(void *,system_event_t *);
 static void               callback(void *,wifi_promiscuous_pkt_type_t);
 static struct id_data    *next_uav(uint8_t *);
-static void               parse_french_id(struct id_data *,uint8_t *);
 static void               parse_odid(struct id_data *,ODID_UAS_Data *);
                         
 static void               dump_frame(uint8_t *,int);
@@ -119,9 +51,6 @@ static void               calc_m_per_deg(double,double,double *,double *);
 static char              *format_op_id(char *);
 
 static double             base_lat_d = 0.0, base_long_d = 0.0, m_deg_lat = 110000.0, m_deg_long = 110000.0;
-#if SD_LOGGER
-static struct id_log      logfiles[MAX_UAVS + 1];
-#endif
 
 volatile char             ssid[10];
 volatile unsigned int     callback_counter = 0, french_wifi = 0, odid_wifi = 0, odid_ble = 0;
@@ -151,25 +80,12 @@ void setup() {
   memset((void *) &UAS_data,0,sizeof(ODID_UAS_Data));
   memset((void *) uavs,0,(MAX_UAVS + 1) * sizeof(struct id_data));
   memset((void *) ssid,0,10);
-
   strcpy((char *) uavs[MAX_UAVS].op_id,"NONE");
-
-#if SD_LOGGER
-
-  for (i = 0; i <= MAX_UAVS; ++i) {
-
-    logfiles[i].flushed    = 1; 
-    logfiles[i].last_write = 0;
-  }
-
-#endif
 
   //
 
   delay(100);
-
   Serial.begin(115200);
-
   Serial.printf("\r\n{ \"title\": \"%s\" }\r\n",title);
   Serial.printf("{ \"build date\": \"%s\" }\r\n",build_date);
 
@@ -183,7 +99,6 @@ void setup() {
 #if WIFI_SCAN
 
   wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-
   esp_wifi_init(&cfg);
   esp_wifi_set_storage(WIFI_STORAGE_RAM);
   esp_wifi_set_mode(WIFI_MODE_NULL);
@@ -192,9 +107,6 @@ void setup() {
   esp_wifi_set_promiscuous_rx_cb(&callback); 
   
   // The channel should be 6.
-  // If the second parameter is not WIFI_SECOND_CHAN_NONE, cast it to (wifi_second_chan_t).
-  // There has been a report of the ESP not scanning the first channel if the second is set.
-  
   esp_wifi_set_channel(6,WIFI_SECOND_CHAN_NONE);
 #endif
 
@@ -212,31 +124,6 @@ void setup() {
 
     sprintf(text,"\'%s\' -> \'%s\'\r\n",(char *) id[i],format_op_id((char *) id[i]));
     Serial.print(text);
-  }
-
-#endif
-
-#if SD_LOGGER
-
-  File root, file;
-
-  pinMode(SD_LOGGER_LED,OUTPUT);
-  digitalWrite(SD_LOGGER_LED,0);
-
-  if (SD.begin(SD_CS)) {
-
-    if (root = SD.open("/")) {
-
-      while (file = root.openNextFile()) {
-
-        sprintf(text,"{ \"file\": \"%s\", \"size\": %u }\r\n",file.name(),file.size());
-        Serial.print(text);
-        
-        file.close();
-      }
-
-      root.close();
-    }
   }
 
 #endif
@@ -263,9 +150,6 @@ void loop() {
   text[0] = i = j = k = 0;
 
   //
-  
-  msecs = millis();
-
 
   msecs = millis();
   secs  = msecs / 1000;
@@ -278,22 +162,13 @@ void loop() {
       uavs[i].last_seen = 0;
       uavs[i].mac[0]    = 0;
 
-#if SD_LOGGER
-      if (logfiles[i].sd_log) {
-
-        logfiles[i].sd_log.close();
-        logfiles[i].flushed = 1;
-      }
-#endif
     }
 
     if (uavs[i].flag) {
 
       print_json(i,secs,(id_data *) &uavs[i]);
 
-#if SD_LOGGER
-      write_log(msecs,(id_data *) &uavs[i],&logfiles[i]);
-#endif
+
 
       if ((uavs[i].lat_d)&&(uavs[i].base_lat_d)) 
             // Imprimir a variável lat_d
@@ -316,23 +191,6 @@ void loop() {
       last_json = msecs;
     }
 
-#if SD_LOGGER
-
-    if ((logfiles[i].sd_log)&&
-        (!logfiles[i].flushed)&&
-        ((msecs - logfiles[i].last_write) > 10000)) {
-
-      digitalWrite(SD_LOGGER_LED,1);
-
-      logfiles[i].sd_log.flush();
-      logfiles[i].flushed = 1;
-
-      logfiles[i].last_write = msecs;
-
-      digitalWrite(SD_LOGGER_LED,0);
-    }  
-
-#endif
   
 
 
@@ -343,37 +201,9 @@ void loop() {
 
       last_json = msecs;
   }
-
+}
   //
 
-  if (( msecs > DISPLAY_PAGE_MS)&&
-      ((msecs - last_display_update) > 50)) {
-
-    last_display_update = msecs;
-
-    if ((msecs - last_page_change) >= DISPLAY_PAGE_MS) {
-
-      for (i = 1; i < MAX_UAVS; ++i) {
-
-        j = (display_uav + i) % MAX_UAVS;
-
-        if (uavs[j].mac[0]) {
-
-          display_uav = j;
-          break;
-        }
-      }
-
-      last_page_change += DISPLAY_PAGE_MS;
-    }
-
-    msl = uavs[display_uav].altitude_msl;
-    agl = uavs[display_uav].height_agl;
-
-  }
-
-  return;
-}
 
 /*
  *
@@ -407,58 +237,7 @@ void print_json(int index,int secs,struct id_data *UAV) {
  *
  */
 
-void write_log(uint32_t msecs,struct id_data *UAV,struct id_log *logfile) {
 
-#if SD_LOGGER
-
-  int       secs, dsecs;
-  char      text[128], filename[24], text1[16], text2[16];
-
-  secs  = (int) (msecs / 1000);
-  dsecs = ((short int) (msecs - (secs * 1000))) / 100;
-
-  //
-
-  if (!logfile->sd_log) {
-
-    sprintf(filename,"/%02X%02X%02X%02X.TSV",
-            UAV->mac[2],UAV->mac[3],UAV->mac[4],UAV->mac[5]);
-
-    if (!(logfile->sd_log = SD.open(filename,FILE_APPEND))) {
-
-      sprintf(text,"{ \"message\": \"Unable to open \'%s\'\" }\r\n",filename);
-      Serial.print(text);
-    }
-  }
-
-  //
-
-  if (logfile->sd_log) {
-
-    dtostrf(UAV->lat_d,11,6,text1);
-    dtostrf(UAV->long_d,11,6,text2);
-
-    sprintf(text,"%d.%d\t%s\t%s\t%s\t%s\t",
-            secs,dsecs,UAV->op_id,UAV->uav_id,text1,text2);
-    logfile->sd_log.print(text);
-
-    sprintf(text,"%d\t%d\t%d\t",
-            (int) UAV->altitude_msl,(int) UAV->speed,
-            (int) UAV->heading);
-    logfile->sd_log.print(text);
-
-    logfile->sd_log.print("\r\n");
-    logfile->flushed = 0;
-  }
-  
-#endif
-
-  return;
-}
-
-/*
- *
- */
 
 esp_err_t event_handler(void *ctx, system_event_t *event) {
   
@@ -542,16 +321,9 @@ Serial.println();
       len =  payload[offset + 1];
       val = &payload[offset + 2];
 
-      if ((typ    == 0xdd)&&
-          (val[0] == 0x6a)&& // French
-          (val[1] == 0x5c)&&
-          (val[2] == 0x35)) {
+      
 
-        ++french_wifi;
-
-        parse_french_id(UAV,&payload[offset]);
-
-      } else if ((typ      == 0xdd)&&
+       if ((typ      == 0xdd)&&
                  (((val[0] == 0x90)&&(val[1] == 0x3a)&&(val[2] == 0xe6))|| // Parrot
                   ((val[0] == 0xfa)&&(val[1] == 0x0b)&&(val[2] == 0xbc)))) { // ODID
 
@@ -563,9 +335,7 @@ Serial.println();
           
           odid_message_process_pack((ODID_UAS_Data *) &UAS_data,&payload[j],length - j);
 
-#if DUMP_ODID_FRAME
-          dump_frame(payload,length);     
-#endif
+
           parse_odid(UAV,(ODID_UAS_Data *) &UAS_data);
         }
 
@@ -678,193 +448,6 @@ void parse_odid(struct id_data *UAV,ODID_UAS_Data *UAS_data2) {
   return;
 }
 
-/*
- *
- */
-
-void parse_french_id(struct id_data *UAV,uint8_t *payload) {
-
-  int            length, i, j, l, t, index;
-  uint8_t       *v;
-  union {int32_t i32; uint32_t u32;}
-                 uav_lat, uav_long, base_lat, base_long;
-  union {int16_t i16; uint16_t u16;} 
-                 alt, height;
-
-  uav_lat.u32  
-  = 
-  uav_long.u32  = 
-  base_lat.u32  =
-  base_long.u32 = 0;
-
-  alt.u16       =
-  height.u16    = 0;
-
-  index  = 0;
-  length = payload[1];
-
-  UAV->flag = 1;
-
-  for (j = 6; j < length;) {
-
-    t =  payload[j];
-    l =  payload[j + 1];
-    v = &payload[j + 2];
-
-    switch (t) {
-
-    case  1:
-
-      if (v[0] != 1) {
-
-        return;
-      }
-      
-      break;
-
-    case  2:
-
-      for (i = 0; (i < (l - 6))&&(i < (ID_SIZE - 1)); ++i) {
-
-        UAV->op_id[i] = (char) v[i + 6];
-      }
-
-      UAV->op_id[i] = 0;
-      break;
-
-    case  3:
-
-      for (i = 0; (i < l)&&(i < (ID_SIZE - 1)); ++i) {
-
-        UAV->uav_id[i] = (char) v[i];
-      }
-
-      UAV->uav_id[i] = 0;
-      break;
-
-    case  4:
-
-      for (i = 0; i < 4; ++i) {
-
-        uav_lat.u32 <<= 8;
-        uav_lat.u32  |= v[i];
-      }
-
-      break;
-
-    case  5:
-
-      for (i = 0; i < 4; ++i) {
-
-        uav_long.u32 <<= 8;
-        uav_long.u32  |= v[i];
-      }
-
-      break;
-
-    case  6:
-
-      alt.u16 = (((uint16_t) v[0]) << 8) | (uint16_t) v[1];
-      break;
-
-    case  7:
-
-      height.u16 = (((uint16_t) v[0]) << 8) | (uint16_t) v[1];
-      break;
-
-    case  8:
-
-      for (i = 0; i < 4; ++i) {
-
-        base_lat.u32 <<= 8;
-        base_lat.u32  |= v[i];
-      }
-
-      break;
-
-    case  9:
-
-      for (i = 0; i < 4; ++i) {
-
-        base_long.u32 <<= 8;
-        base_long.u32  |= v[i];
-      }
-
-      break;
-
-    case 10:
-
-      UAV->speed = v[0];   
-      break;
-
-    case 11:
-
-      UAV->heading = (((uint16_t) v[0]) << 8) | (uint16_t) v[1];
-      break;
-
-    default:
-    
-      break;
-    }
-
-    j += l + 2;
-  }
-
-  UAV->lat_d        = 1.0e-5 * (double) uav_lat.i32;
-  UAV->long_d       = 1.0e-5 * (double) uav_long.i32;
-  UAV->base_lat_d   = 1.0e-5 * (double) base_lat.i32;
-  UAV->base_long_d  = 1.0e-5 * (double) base_long.i32;
-
-  UAV->altitude_msl = alt.i16;
-  UAV->height_agl   = height.i16;
-
-  return;
-}
-
-/*
- *
- */
-
-void dump_frame(uint8_t *frame,int length) {
-
-  int      i;
-  char     text[128], text2[20];
-
-  text[0]     = 0;
-  text2[0]    =
-  text2[16]   = 0; 
-
-  sprintf(text,"\r\nFrame, %d bytes\r\n   ",length);
-  Serial.print(text);
-
-  for (i = 0; i < 16; ++i) {
-
-    sprintf(text,"%02d ",i);
-    Serial.print(text);
-  }
-
-  Serial.print("\r\n 0 ");
-
-  for (i = 0; i < (length + 4);) {
-
-    sprintf(text,"%02x ",frame[i]);
-    Serial.print(text);
-
-    text2[i % 16] = ((frame[i] > 31)&&(frame[i] < 127)) ? frame[i]: '.';
-
-    if ((++i % 16) == 0) {
-
-      sprintf(text,"%s\r\n%2d ",text2,i / 16);
-      Serial.print(text);          
-    }
-
-    text2[i % 16] = 0;
-  }
-    
-  Serial.print("\r\n\r\n");          
-
-  return;
-}
 
 /*
  *
@@ -888,38 +471,3 @@ void calc_m_per_deg(double lat_d,double long_d,double *m_deg_lat,double *m_deg_l
 
   return;
 }
-
-/*
- *
- */
-
-char *format_op_id(char *op_id) {
-
-  int           i, j, len;
-  char         *a, *b;
-  static char   short_id[OP_DISPLAY_LIMIT + 2];
-  const char   *_op_ = "-OP-";
-
-  strncpy(short_id,op_id,i = sizeof(short_id)); 
-  
-  short_id[OP_DISPLAY_LIMIT] = 0;
-
-  if ((len = strlen(op_id)) > OP_DISPLAY_LIMIT) {
-
-    if (a = strstr(short_id,_op_)) {
-
-      b = strstr(op_id,_op_);
-      j = strlen(a);
-
-      strncpy(a,&b[3],j);
-      short_id[OP_DISPLAY_LIMIT] = 0;
-    }
-  }
-
-  return short_id;
-}
-
-
-/*
- *
- */ 
