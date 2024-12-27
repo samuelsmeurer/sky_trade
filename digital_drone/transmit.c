@@ -83,8 +83,8 @@ static void fill_example_data(struct ODID_UAS_Data *uasData) {
 
     uasData->System.OperatorLocationType = ODID_OPERATOR_LOCATION_TYPE_TAKEOFF;
     uasData->System.ClassificationType = ODID_CLASSIFICATION_TYPE_EU;
-    uasData->System.OperatorLatitude = uasData->Location.Latitude + 0.001;
-    uasData->System.OperatorLongitude = uasData->Location.Longitude - 0.001;
+    uasData->System.OperatorLatitude = uasData->Location.Latitude - 26.9101;
+    uasData->System.OperatorLongitude = uasData->Location.Longitude - 49.1033;
     uasData->System.AreaCount = 1;
     uasData->System.AreaRadius = 0;
     uasData->System.AreaCeiling = 0;
@@ -105,12 +105,12 @@ static void fill_example_gps_data(struct ODID_UAS_Data *uasData) {
     uasData->Location.Direction = 361.f;
     uasData->Location.SpeedHorizontal = 0.0f;
     uasData->Location.SpeedVertical = 0.35f;
-    uasData->Location.Latitude = 51.4791;
-    uasData->Location.Longitude = -0.0013;
+    uasData->Location.Latitude = -26.9101;
+    uasData->Location.Longitude = -49.1033;
     uasData->Location.AltitudeBaro = 100;
     uasData->Location.AltitudeGeo = 110;
     uasData->Location.HeightType = ODID_HEIGHT_REF_OVER_GROUND;
-    uasData->Location.Height = 80;
+    uasData->Location.Height = 90;
     uasData->Location.HorizAccuracy = createEnumHorizontalAccuracy(5.5f);
     uasData->Location.VertAccuracy = createEnumVerticalAccuracy(9.5f);
     uasData->Location.BaroAccuracy = createEnumVerticalAccuracy(0.5f);

@@ -1,13 +1,3 @@
-/* -*- tab-width: 2; mode: c; -*-
- * 
- * Scanner for WiFi direct remote id. 
- * 
- * Copyright (c) 2020-2021, Steve Jack.
- *
- * MIT licence.
-
- */
-
 #if not defined(ARDUINO_ARCH_ESP32)
 #error "This program requires an ESP32"
 #endif
@@ -64,9 +54,8 @@ static const char        *title = "RID Scanner", *build_date = __DATE__,
                          *blank_latlong = " ---.------";
 
 
-/*
- *
- */
+
+
 
 void setup() {
 
@@ -133,9 +122,9 @@ void setup() {
   return;
 }
 
-/*
- *
- */
+
+
+
 
 void loop() {
 
@@ -195,21 +184,17 @@ void loop() {
       last_json = msecs;
   }
 }
-  //
 
 
-/*
- *
- */
 
 esp_err_t event_handler(void *ctx, system_event_t *event) {
   
   return ESP_OK;
 }
 
-/*
- * This function handles WiFi packets.
- */
+
+
+
 
 void callback(void* buffer,wifi_promiscuous_pkt_type_t type) {
 
@@ -234,24 +219,6 @@ void callback(void* buffer,wifi_promiscuous_pkt_type_t type) {
   payload   = packet->payload;
   length    = packet->rx_ctrl.sig_len;
   offset    = 36;
-  
-
-    int rssi = packet->rx_ctrl.rssi;      // Intensidade do sinal
-
-    // Imprime informações básicas do pacote
-    Serial.print("Pacote capturado: Comprimento = ");
-    Serial.print(length);
-    Serial.print(" bytes, RSSI = ");
-    Serial.println(rssi);
-
-// Imprime mais bytes do payload para análise detalhada
-Serial.print("Payload: ");
-for (int i = 0; i < length; i++) {  // Ajuste 'length' para limitar a saída se necessário
-    Serial.printf("%02X ", payload[i]);
-    if ((i+1) % 16 == 0) Serial.println();
-}
-Serial.println();
-
 
   UAV = next_uav(&payload[10]);
 
@@ -260,20 +227,7 @@ Serial.println();
   UAV->rssi      = packet->rx_ctrl.rssi;
   UAV->last_seen = millis();
 
-//
-
-  if (memcmp(nan_dest,&payload[4],6) == 0) {
-
-    // dump_frame(payload,length);
-
-    if (odid_wifi_receive_message_pack_nan_action_frame((ODID_UAS_Data *) &UAS_data,(char *) mac,payload,length) == 0) {
-
-      ++odid_wifi;
-
-      parse_odid(UAV,(ODID_UAS_Data *) &UAS_data);
-    }
-
-  } else if (payload[0] == 0x80) { // beacon
+if (payload[0] == 0x80) { // beacon
 
     offset = 36;
 
@@ -295,13 +249,8 @@ Serial.println();
         if ((j = offset + 7) < length) {
 
           memset((void *) &UAS_data,0,sizeof(UAS_data));
-          
+   
           odid_message_process_pack((ODID_UAS_Data *) &UAS_data,&payload[j],length - j);
-          Serial.print(odid_message_process_pack((ODID_UAS_Data *) &UAS_data,&payload[j],length - j));
-          Serial.println();
-          Serial.println();
-          Serial.println();
-          Serial.println();
           parse_odid(UAV,(ODID_UAS_Data *) &UAS_data);
         }
 
@@ -316,70 +265,9 @@ Serial.println();
       offset += len + 2;
     }
 
-    if (ssid_tmp[0]) {
-
-      strncpy((char *) ssid,ssid_tmp,8);
-    }
-#if 0
-  } else if (a = (char *) memchr(payload,'G',length)) {
-
-    if (memcmp(a,"GBR-OP-",7) == 0) {
-
-      dump_frame(payload,length);     
-    }
-#endif
   }
 
-  if ((!UAV->op_id[0])&&(!UAV->lat_d)) {
 
-    UAV->mac[0] = 0;
-  }
-
-  return;
-}
-
-/*
- *
- */
-
- struct id_data *next_uav(uint8_t *mac) {
-
-  int             i;
-  struct id_data *UAV = NULL;
-
-  for (i = 0; i < MAX_UAVS; ++i) {
-
-    if (memcmp((void *) uavs[i].mac,mac,6) == 0) {
-
-      UAV = (struct id_data *) &uavs[i];
-    }
-  }
-
-  if (!UAV) {
-
-    for (i = 0; i < MAX_UAVS; ++i) {
-
-      if (!uavs[i].mac[0]) {
-
-        UAV = (struct id_data *) &uavs[i];
-        break;
-      }
-    }
-  }
-
-  if (!UAV) {
-
-     UAV = (struct id_data *) &uavs[MAX_UAVS - 1];
-  }
-
-  return UAV;
-}
-
-
-
-/*
- *
- */
 
 void parse_odid(struct id_data *UAV,ODID_UAS_Data *UAS_data2) {
 
@@ -415,65 +303,4 @@ void parse_odid(struct id_data *UAV,ODID_UAS_Data *UAS_data2) {
 
   return;
 }
-
-
-/*
- *
- */
-
-void calc_m_per_deg(double lat_d,double long_d,double *m_deg_lat,double *m_deg_long) {
-
-  double pi, deg2rad, sin_lat, cos_lat, a, b, radius;
-
-  pi       = 4.0 * atan(1.0);
-  deg2rad  = pi / 180.0;
-
-  sin_lat     = sin(lat_d * deg2rad);
-  cos_lat     = cos(lat_d * deg2rad);
-  a           = 0.08181922;
-  b           = a * sin_lat;
-  radius      = 6378137.0 * cos_lat / sqrt(1.0 - (b * b));
-  *m_deg_long = deg2rad * radius;
-  *m_deg_lat   = 111132.954 - (559.822 * cos(2.0 * lat_d * deg2rad)) - 
-                (1.175 *  cos(4.0 * lat_d * deg2rad));
-
-  return;
-}
-
-
-/*
- *
- */
-
-
-
-void print_json(int index,int secs,struct id_data *UAV) {
-
-  char text[128], text1[16],text2[16], text3[16], text4[16];
-  dtostrf(UAV->lat_d,11,6,text1);
-  dtostrf(UAV->long_d,11,6,text2);
-  dtostrf(UAV->base_lat_d,11,6,text3);
-  dtostrf(UAV->base_long_d,11,6,text4);
-
-   Serial.print("Oi, passei por aqui text1: ");
-    Serial.println(text1);
-    Serial.print("Oi, passei por aqui text2: ");
-    Serial.println(text2);
-    Serial.print("Oi, passei por aqui text3: ");
-    Serial.println(text3);
-    Serial.print("Oi, passei por aqui text4: ");
-    Serial.println(text4);
-
-  sprintf(text,"{ \"index\": %d, \"runtime\": %d, \"mac\": \"%02x:%02x:%02x:%02x:%02x:%02x\", ",
-          index,secs,
-          UAV->mac[0],UAV->mac[1],UAV->mac[2],UAV->mac[3],UAV->mac[4],UAV->mac[5]);
-  Serial.print(text);
-  sprintf(text,"\"id\": \"%s\", \"uav latitude\": %s, \"uav longitude\": %s, \"alitude msl\": %d, ",
-          UAV->op_id,text1,text2,UAV->altitude_msl);
-    (text);
-  sprintf(text,"\"height agl\": %d, \"base latitude\": %s, \"base longitude\": %s, \"speed\": %d, \"heading\": %d }\r\n",
-          UAV->height_agl,text3,text4,UAV->speed,UAV->heading);
-  Serial.print(text);
-
-  return;
-}
+  
