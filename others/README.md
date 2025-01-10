@@ -5,7 +5,7 @@
 # Others Sky Trade
 This folder contains various auxiliary scripts, process standardization images, and instructional images.
 
-The main code in this folder is `payload_scan.c.
+The main code in this folder is `payload_scan.c.`
 
 This code can be used by personnel who have access to a drone that sends remote ID via WiFi but do not have an ESP32. This code will execute and capture all WiFi packets in the 6GHz band and output them to the file `payloads.txt`.
 
