@@ -1,3 +1,7 @@
+<p align="right">
+  <img src="../../others/images/16image.png" alt="SkyTrade" width="200" style="float: right;">
+</p>
+
 # Radar Drone
 This software is used on the ESP32 microcontroller to identify drones via WiFi by Sky Trade.
 
@@ -27,9 +31,9 @@ What you need:
 ### Installing the Repository:
 In the terminal, execute the command:
 
-'''
+```
 git clone https://github.com/samuelsmeurer/sky_trade
-'''
+```
 
 ### Downloading the Arduino IDE
 1. Download the Arduino IDE from -> [Arduino Software](https://www.arduino.cc/en/software)
@@ -42,7 +46,7 @@ git clone https://github.com/samuelsmeurer/sky_trade
 3. Click to open the folder `skytrade/radar_esp32/radar_skytrade`.
 4. Ensure that the ESP32 cable is connected to the USB port and click on the board selection box:
    ![Board Selection](../../others/images/5image.png)
-5. Type "ESP32 Dev Module" and confirm.
+5. Type `ESP32 Dev Module` and confirm.
    ![Select ESP32 Dev Module](../../others/images/6image.png)
 6. Click on verify and confirm that the compilation was successful.
    ![Compilation Success](../../others/images/7image.png)
@@ -50,7 +54,7 @@ git clone https://github.com/samuelsmeurer/sky_trade
    ![Successful Message](../../others/images/8image.png)
 8. Now confirm that the port is connected and recognized:
    ![Port Confirmation](../../others/images/9image.png)
-10. Click the Upload button to send the code to the ESP32:
+10. Click the `upload button` to send the code to the ESP32:
     ![Upload Button](../../others/images/10image.png)
     ![Uploading](../../others/images/11image.png)
 12. To confirm that everything went correctly, the percentages of the code being written to the microcontroller ESP32 will be displayed:
