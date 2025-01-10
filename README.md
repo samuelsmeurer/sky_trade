@@ -1,5 +1,6 @@
-# Drone Radar Project Repository Structure - Sky Trade Hardware Sector
+# Drone Radar Project - Sky Trade Hardware Sector
 
+##Repository Structure
 This repository serves as the standard base for the drone radar project development within the Hardware sector of Sky Trade. Below, the image illustrates the organization of the repository folders, making it easier to locate specific information.
 
 ![Folder Organization](others/images/folders_radar_drone.jpg)
