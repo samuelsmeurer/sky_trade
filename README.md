@@ -10,7 +10,7 @@ This repository serves as the standard base for the drone radar project developm
 ### [`remote_id_guide`](https://github.com/samuelsmeurer/sky_trade/tree/main/remote_id_guide)
 This folder contains an initial guide to better understand the remote ID protocol.
 
-### [`gantt_pending_tasks.xlsx`](https://github.com/samuelsmeurer/sky_trade/tree/main/gantt_pending_tasks.xlsx)
+### [`gantt_pending_tasks.md`](https://github.com/samuelsmeurer/sky_trade/tree/main/gantt_pending_tasks.md)
 This file contains a list of ongoing and pending tasks, providing an overview of the project backlog and planning.
 
 ### [`digital_drone`](https://github.com/samuelsmeurer/sky_trade/tree/main/digital_drone) Folder
